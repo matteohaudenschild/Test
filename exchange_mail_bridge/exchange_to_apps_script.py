@@ -163,9 +163,10 @@ def extract_body_html(item: Any, limit: int) -> str:
 def html_to_text(value: str) -> str:
     value = re.sub(r"(?is)<(script|style).*?>.*?</\1>", " ", value)
     value = re.sub(r"(?i)<br\s*/?>", "\n", value)
-    value = re.sub(r"(?i)</p\s*>", "\n", value)
+    value = re.sub(r"(?i)</?(?:p|div|tr|table|tbody|thead|tfoot|ul|ol|li|h[1-6])\b[^>]*>", "\n", value)
+    value = re.sub(r"(?i)</?(?:td|th)\b[^>]*>", "\n", value)
     value = re.sub(r"(?s)<[^>]+>", " ", value)
-    return normalize_text(unescape(value))
+    return normalize_text_lines(unescape(value))
 
 
 def extract_body_links(item: Any, limit: int = 100) -> List[str]:
@@ -288,6 +289,14 @@ def should_download_attachment(name: str, content_type: str, is_inline: bool) ->
 
 def normalize_text(value: str) -> str:
     return re.sub(r"\s+", " ", value.replace("\x00", "")).strip()
+
+
+def normalize_text_lines(value: str) -> str:
+    lines = [
+        re.sub(r"[ \t\f\v]+", " ", line).strip()
+        for line in value.replace("\x00", "").splitlines()
+    ]
+    return "\n".join(line for line in lines if line)
 
 
 def iso_or_empty(value: Any) -> str:
