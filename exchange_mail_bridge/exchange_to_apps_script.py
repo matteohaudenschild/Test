@@ -141,14 +141,19 @@ def extract_body_preview(item: Any, limit: int = 1000) -> str:
 
 def extract_body_text(item: Any, limit: int = 50000) -> str:
     text_body = getattr(item, "text_body", None)
-    if text_body:
-        return normalize_text(str(text_body))[:limit]
-
     body = getattr(item, "body", None)
-    if not body:
-        return ""
+    html_text = html_to_text(str(body)) if body else ""
 
-    return html_to_text(str(body))[:limit]
+    if html_text and (
+        not text_body
+        or html_text.count("\n") > normalize_text_lines(str(text_body)).count("\n")
+    ):
+        return html_text[:limit]
+
+    if text_body:
+        return normalize_text_lines(str(text_body))[:limit]
+
+    return ""
 
 
 def extract_body_html(item: Any, limit: int) -> str:
