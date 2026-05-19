@@ -51,12 +51,13 @@ function doPost(e) {
       const existingAttachmentLinks = rowNumber && columns.AttachmentLinks
         ? clean_(sheet.getRange(rowNumber, columns.AttachmentLinks).getValue())
         : '';
-      const savedAttachmentLinks = validAttachmentLinks_(existingAttachmentLinks) ? existingAttachmentLinks : '';
+      const hasStaleAttachmentLinks = Boolean(existingAttachmentLinks) && !validAttachmentLinks_(existingAttachmentLinks);
+      const savedAttachmentLinks = hasStaleAttachmentLinks ? '' : existingAttachmentLinks;
       const attachmentLinks = savedAttachmentLinks || saveAttachments_(message, props);
       const row = buildRow_(message, attachmentLinks, now);
 
       if (rowNumber) {
-        if (hasEnrichment_(message) || attachmentLinks) {
+        if (hasEnrichment_(message) || attachmentLinks || hasStaleAttachmentLinks) {
           updates.push({ rowNumber, row });
           updated += 1;
         } else {
