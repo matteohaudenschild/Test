@@ -1,0 +1,37 @@
+name: Exchange Mail Bridge
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/10 * * * *"
+
+jobs:
+  sync-mail:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      EWS_URL: ${{ secrets.EWS_URL }}
+      EWS_EMAIL: ${{ secrets.EWS_EMAIL }}
+      EWS_USERNAME: ${{ secrets.EWS_USERNAME }}
+      EWS_PASSWORD: ${{ secrets.EWS_PASSWORD }}
+      EWS_AUTH_TYPE: ${{ secrets.EWS_AUTH_TYPE }}
+      EWS_VERIFY_TLS: ${{ secrets.EWS_VERIFY_TLS }}
+      APPS_SCRIPT_WEBAPP_URL: ${{ secrets.APPS_SCRIPT_WEBAPP_URL }}
+      BRIDGE_TOKEN: ${{ secrets.BRIDGE_TOKEN }}
+      MAIL_LOOKBACK_MINUTES: "30"
+      MAIL_TOP: "30"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: python -m pip install -r exchange_mail_bridge/requirements.txt
+
+      - name: Sync Exchange inbox to Google Sheet
+        run: python exchange_mail_bridge/exchange_to_apps_script.py

@@ -1,0 +1,7 @@
+*.local.txt
+__pycache__/
+*.pyc
+.env
+.venv/
+venv/
+node_modules/
