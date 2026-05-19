@@ -43,8 +43,8 @@ jobs:
       EWS_VERIFY_TLS: ${{ secrets.EWS_VERIFY_TLS }}
       APPS_SCRIPT_WEBAPP_URL: ${{ secrets.APPS_SCRIPT_WEBAPP_URL }}
       BRIDGE_TOKEN: ${{ secrets.BRIDGE_TOKEN }}
-      MAIL_LOOKBACK_MINUTES: ${{ github.event_name == 'workflow_dispatch' && inputs.lookback_minutes || '30' }}
-      MAIL_TOP: ${{ github.event_name == 'workflow_dispatch' && inputs.mail_top || '30' }}
+      MAIL_LOOKBACK_MINUTES: ${{ github.event_name == 'workflow_dispatch' && inputs.lookback_minutes || '360' }}
+      MAIL_TOP: ${{ github.event_name == 'workflow_dispatch' && inputs.mail_top || '50' }}
       INCLUDE_ATTACHMENTS: ${{ github.event_name == 'workflow_dispatch' && inputs.include_attachments || 'true' }}
       MAX_ATTACHMENT_BYTES: ${{ github.event_name == 'workflow_dispatch' && inputs.max_attachment_bytes || '2500000' }}
       INCLUDE_BODY_HTML: ${{ github.event_name == 'workflow_dispatch' && inputs.include_body_html || 'true' }}
