@@ -145,12 +145,21 @@ def extract_body_image_urls(item: Any, limit: int = 20) -> List[str]:
         return []
 
     urls: List[str] = []
-    for match in re.finditer(r"""(?is)<img\b[^>]*\bsrc=["']([^"']+)["']""", body):
-        src = normalize_text(unescape(match.group(1)))
-        if src and src not in urls:
-            urls.append(src[:2000])
-        if len(urls) >= limit:
-            break
+    patterns = [
+        r"""(?is)<img\b[^>]*\bsrc=["']([^"']+)["']""",
+        r"""(?is)\b(?:src|href|background)=["']([^"']+\.(?:png|jpe?g|gif|webp|bmp|svg)(?:\?[^"']*)?)["']""",
+        r"""(?is)url\(["']?([^)"']+\.(?:png|jpe?g|gif|webp|bmp|svg)(?:\?[^)"']*)?)["']?\)""",
+        r"""(?is)\b(cid:[^"' <>)]+)""",
+        r"""(?is)\b(data:image/[^"' <>)]+)""",
+    ]
+
+    for pattern in patterns:
+        for match in re.finditer(pattern, body):
+            src = normalize_text(unescape(match.group(1)))
+            if src and src not in urls:
+                urls.append(src[:2000])
+            if len(urls) >= limit:
+                return urls
     return urls
 
 
