@@ -14,7 +14,7 @@ on:
       include_attachments:
         description: "Download image attachments into Google Drive"
         required: false
-        default: "false"
+        default: "true"
       max_attachment_bytes:
         description: "Maximum bytes per downloaded attachment"
         required: false
@@ -37,7 +37,7 @@ jobs:
       BRIDGE_TOKEN: ${{ secrets.BRIDGE_TOKEN }}
       MAIL_LOOKBACK_MINUTES: ${{ github.event_name == 'workflow_dispatch' && inputs.lookback_minutes || '30' }}
       MAIL_TOP: ${{ github.event_name == 'workflow_dispatch' && inputs.mail_top || '30' }}
-      INCLUDE_ATTACHMENTS: ${{ github.event_name == 'workflow_dispatch' && inputs.include_attachments || 'false' }}
+      INCLUDE_ATTACHMENTS: ${{ github.event_name == 'workflow_dispatch' && inputs.include_attachments || 'true' }}
       MAX_ATTACHMENT_BYTES: ${{ github.event_name == 'workflow_dispatch' && inputs.max_attachment_bytes || '2500000' }}
 
     steps:
