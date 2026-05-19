@@ -1,4 +1,5 @@
 import argparse
+import base64
 import json
 import os
 import re
@@ -10,6 +11,7 @@ import requests
 from exchangelib import (
     BASIC,
     DELEGATE,
+    FileAttachment,
     NTLM,
     Account,
     Configuration,
@@ -78,16 +80,28 @@ def connect_account() -> Account:
 
 def fetch_messages(account: Account, lookback_minutes: int, top: int) -> List[Dict[str, Any]]:
     cutoff = EWSDateTime.now(tz=UTC) - timedelta(minutes=lookback_minutes)
+    include_attachments = parse_bool(env("INCLUDE_ATTACHMENTS"), default=False)
+    max_attachment_bytes = int(env("MAX_ATTACHMENT_BYTES", "2500000"))
     items = (
         account.inbox.filter(datetime_received__gte=cutoff)
         .order_by("-datetime_received")[:top]
     )
-    return [serialize_item(item) for item in items]
+    return [
+        serialize_item(
+            item,
+            include_attachments=include_attachments,
+            max_attachment_bytes=max_attachment_bytes,
+        )
+        for item in items
+    ]
 
 
-def serialize_item(item: Any) -> Dict[str, Any]:
+def serialize_item(item: Any, include_attachments: bool, max_attachment_bytes: int) -> Dict[str, Any]:
     sender = getattr(item, "sender", None) or getattr(item, "author", None)
     body_preview = extract_body_preview(item)
+    attachments = serialize_attachments(item, include_attachments, max_attachment_bytes)
+    body_image_urls = extract_body_image_urls(item)
+    attachment_count = count_attachments(item)
 
     return {
         "id": str(getattr(item, "id", "") or ""),
@@ -96,7 +110,10 @@ def serialize_item(item: Any) -> Dict[str, Any]:
         "fromEmail": str(getattr(sender, "email_address", "") or ""),
         "subject": str(getattr(item, "subject", "") or ""),
         "bodyPreview": body_preview,
-        "hasAttachments": bool(getattr(item, "has_attachments", False)),
+        "hasAttachments": bool(getattr(item, "has_attachments", False) or attachments),
+        "attachmentCount": attachment_count,
+        "attachments": attachments,
+        "bodyImageUrls": body_image_urls,
         "conversationId": str(getattr(item, "conversation_id", "") or ""),
         "webLink": "",
     }
@@ -120,6 +137,96 @@ def html_to_text(value: str) -> str:
     value = re.sub(r"(?i)</p\s*>", "\n", value)
     value = re.sub(r"(?s)<[^>]+>", " ", value)
     return normalize_text(unescape(value))
+
+
+def extract_body_image_urls(item: Any, limit: int = 20) -> List[str]:
+    body = str(getattr(item, "body", "") or "")
+    if not body:
+        return []
+
+    urls: List[str] = []
+    for match in re.finditer(r"""(?is)<img\b[^>]*\bsrc=["']([^"']+)["']""", body):
+        src = normalize_text(unescape(match.group(1)))
+        if src and src not in urls:
+            urls.append(src[:2000])
+        if len(urls) >= limit:
+            break
+    return urls
+
+
+def count_attachments(item: Any) -> int:
+    attachments = getattr(item, "attachments", None) or []
+    try:
+        return len(attachments)
+    except TypeError:
+        return 0
+
+
+def serialize_attachments(item: Any, include_attachments: bool, max_attachment_bytes: int) -> List[Dict[str, Any]]:
+    attachments = getattr(item, "attachments", None) or []
+    if not include_attachments:
+        return []
+
+    serialized = []
+    for attachment in attachments:
+        if not isinstance(attachment, FileAttachment):
+            continue
+
+        name = str(getattr(attachment, "name", "") or "attachment")
+        content_type = str(getattr(attachment, "content_type", "") or "application/octet-stream")
+        is_inline = bool(getattr(attachment, "is_inline", False))
+        content_id = str(getattr(attachment, "content_id", "") or "")
+
+        if not should_download_attachment(name, content_type, is_inline):
+            serialized.append(attachment_metadata(attachment, skipped_reason="unsupported_type"))
+            continue
+
+        content = getattr(attachment, "content", b"") or b""
+        size = len(content)
+        if size <= 0:
+            serialized.append(attachment_metadata(attachment, skipped_reason="empty"))
+            continue
+        if size > max_attachment_bytes:
+            serialized.append(attachment_metadata(attachment, skipped_reason="too_large"))
+            continue
+
+        serialized.append(
+            {
+                "name": name,
+                "contentType": content_type,
+                "size": size,
+                "isInline": is_inline,
+                "contentId": content_id,
+                "base64": base64.b64encode(content).decode("ascii"),
+            }
+        )
+    return serialized
+
+
+def attachment_metadata(attachment: Any, skipped_reason: str) -> Dict[str, Any]:
+    return {
+        "name": str(getattr(attachment, "name", "") or "attachment"),
+        "contentType": str(getattr(attachment, "content_type", "") or ""),
+        "size": int(getattr(attachment, "size", 0) or 0),
+        "isInline": bool(getattr(attachment, "is_inline", False)),
+        "contentId": str(getattr(attachment, "content_id", "") or ""),
+        "skippedReason": skipped_reason,
+    }
+
+
+def should_download_attachment(name: str, content_type: str, is_inline: bool) -> bool:
+    allowed_prefixes = [
+        prefix.strip().lower()
+        for prefix in env("ATTACHMENT_MIME_PREFIXES", "image/").split(",")
+        if prefix.strip()
+    ]
+    lowered_content_type = content_type.lower()
+    if any(lowered_content_type.startswith(prefix) for prefix in allowed_prefixes):
+        return True
+
+    lowered_name = name.lower()
+    image_extensions = (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tif", ".tiff")
+    return is_inline and lowered_name.endswith(image_extensions)
 
 
 def normalize_text(value: str) -> str:
@@ -163,11 +270,20 @@ def main() -> None:
     messages = fetch_messages(account, lookback_minutes=lookback_minutes, top=top)
 
     if args.dry_run:
-        print(json.dumps({"messages": messages}, ensure_ascii=False, indent=2))
+        print(json.dumps({"messages": redact_attachment_payloads(messages)}, ensure_ascii=False, indent=2))
         return
 
     result = post_messages(messages)
     print(json.dumps(result, ensure_ascii=False))
+
+
+def redact_attachment_payloads(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    redacted = json.loads(json.dumps(messages))
+    for message in redacted:
+        for attachment in message.get("attachments", []):
+            if "base64" in attachment:
+                attachment["base64"] = f"<{len(attachment['base64'])} base64 chars>"
+    return redacted
 
 
 if __name__ == "__main__":

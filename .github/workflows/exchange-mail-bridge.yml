@@ -11,6 +11,14 @@ on:
         description: "Maximum messages to import"
         required: false
         default: "30"
+      include_attachments:
+        description: "Download image attachments into Google Drive"
+        required: false
+        default: "false"
+      max_attachment_bytes:
+        description: "Maximum bytes per downloaded attachment"
+        required: false
+        default: "2500000"
   schedule:
     - cron: "*/10 * * * *"
 
@@ -29,6 +37,8 @@ jobs:
       BRIDGE_TOKEN: ${{ secrets.BRIDGE_TOKEN }}
       MAIL_LOOKBACK_MINUTES: ${{ github.event_name == 'workflow_dispatch' && inputs.lookback_minutes || '30' }}
       MAIL_TOP: ${{ github.event_name == 'workflow_dispatch' && inputs.mail_top || '30' }}
+      INCLUDE_ATTACHMENTS: ${{ github.event_name == 'workflow_dispatch' && inputs.include_attachments || 'false' }}
+      MAX_ATTACHMENT_BYTES: ${{ github.event_name == 'workflow_dispatch' && inputs.max_attachment_bytes || '2500000' }}
 
     steps:
       - name: Check out repository
