@@ -1,5 +1,6 @@
 const DEFAULT_SHEET_NAME = 'Exchange Mail';
 const DEFAULT_ATTACHMENT_FOLDER_NAME = 'Exchange Mail Attachments';
+const DEFAULT_BODY_FOLDER_NAME = 'Exchange Mail Bodies';
 
 function doGet() {
   return jsonResponse({
@@ -54,10 +55,16 @@ function doPost(e) {
       const hasStaleAttachmentLinks = Boolean(existingAttachmentLinks) && !validAttachmentLinks_(existingAttachmentLinks);
       const savedAttachmentLinks = hasStaleAttachmentLinks ? '' : existingAttachmentLinks;
       const attachmentLinks = savedAttachmentLinks || saveAttachments_(message, props);
-      const row = buildRow_(message, attachmentLinks, now);
+      const existingBodyHtmlLink = rowNumber && columns.BodyHtmlLink
+        ? clean_(sheet.getRange(rowNumber, columns.BodyHtmlLink).getValue())
+        : '';
+      const hasStaleBodyHtmlLink = Boolean(existingBodyHtmlLink) && !validAttachmentLinks_(existingBodyHtmlLink);
+      const savedBodyHtmlLink = hasStaleBodyHtmlLink ? '' : existingBodyHtmlLink;
+      const bodyHtmlLink = savedBodyHtmlLink || saveBodyHtml_(message, props);
+      const row = buildRow_(message, attachmentLinks, bodyHtmlLink, now);
 
       if (rowNumber) {
-        if (hasEnrichment_(message) || attachmentLinks || hasStaleAttachmentLinks) {
+        if (hasEnrichment_(message) || attachmentLinks || bodyHtmlLink || hasStaleAttachmentLinks || hasStaleBodyHtmlLink) {
           updates.push({ rowNumber, row });
           updated += 1;
         } else {
@@ -91,12 +98,14 @@ function setupConfigOnce() {
     SHEET_ID: 'PASTE_GOOGLE_SHEET_ID_HERE',
     BRIDGE_TOKEN: 'PASTE_LONG_RANDOM_TOKEN_HERE',
     SHEET_NAME: DEFAULT_SHEET_NAME,
-    ATTACHMENT_FOLDER_NAME: DEFAULT_ATTACHMENT_FOLDER_NAME
+    ATTACHMENT_FOLDER_NAME: DEFAULT_ATTACHMENT_FOLDER_NAME,
+    BODY_FOLDER_NAME: DEFAULT_BODY_FOLDER_NAME
   }, true);
 }
 
 function authorizeDriveOnce() {
   getOrCreateDriveFolder_(DEFAULT_ATTACHMENT_FOLDER_NAME);
+  getOrCreateDriveFolder_(DEFAULT_BODY_FOLDER_NAME);
 }
 
 function parsePayload_(e) {
@@ -124,6 +133,9 @@ function ensureHeader_(sheet) {
     'AttachmentNames',
     'AttachmentLinks',
     'BodyImageUrls',
+    'BodyHtmlLink',
+    'BodyLinks',
+    'BodyTextFull',
     'ConversationId',
     'WebLink',
     'ImportedAt'
@@ -175,7 +187,7 @@ function getColumnMap_(headers) {
   }, {});
 }
 
-function buildRow_(message, attachmentLinks, importedAt) {
+function buildRow_(message, attachmentLinks, bodyHtmlLink, importedAt) {
   const attachments = Array.isArray(message.attachments) ? message.attachments : [];
   return [
     clean_(message.id),
@@ -189,6 +201,9 @@ function buildRow_(message, attachmentLinks, importedAt) {
     clean_(attachmentNames_(attachments)),
     clean_(attachmentLinks),
     clean_(bodyImageUrls_(message)),
+    clean_(bodyHtmlLink),
+    clean_(bodyLinks_(message)),
+    clean_(message.bodyTextFull),
     clean_(message.conversationId),
     clean_(message.webLink),
     importedAt
@@ -198,7 +213,13 @@ function buildRow_(message, attachmentLinks, importedAt) {
 function hasEnrichment_(message) {
   const attachments = Array.isArray(message.attachments) ? message.attachments : [];
   const bodyImageUrls = Array.isArray(message.bodyImageUrls) ? message.bodyImageUrls : [];
-  return attachments.length > 0 || bodyImageUrls.length > 0 || Number(message.attachmentCount || 0) > 0;
+  const bodyLinks = Array.isArray(message.bodyLinks) ? message.bodyLinks : [];
+  return attachments.length > 0
+    || bodyImageUrls.length > 0
+    || bodyLinks.length > 0
+    || Boolean(message.bodyHtml)
+    || Boolean(message.bodyTextFull)
+    || Number(message.attachmentCount || 0) > 0;
 }
 
 function saveAttachments_(message, props) {
@@ -228,6 +249,21 @@ function saveAttachments_(message, props) {
   return links.join('\n');
 }
 
+function saveBodyHtml_(message, props) {
+  const html = cleanLarge_(message.bodyHtml, 200000);
+  if (!html) {
+    return '';
+  }
+
+  const folderName = props.getProperty('BODY_FOLDER_NAME') || DEFAULT_BODY_FOLDER_NAME;
+  const folder = getOrCreateDriveFolder_(folderName);
+  const safeMessageId = clean_(message.id).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24) || 'message';
+  const safeSubject = clean_(message.subject || 'mail-body').replace(/[\\/:*?"<>|]/g, '_').slice(0, 80) || 'mail-body';
+  const fileName = `${safeMessageId}_${safeSubject}.html`;
+  const file = folder.createFile(fileName, html, MimeType.HTML);
+  return file.getUrl();
+}
+
 function validAttachmentLinks_(value) {
   const text = clean_(value);
   if (!text) {
@@ -255,11 +291,23 @@ function bodyImageUrls_(message) {
   return urls.join('\n');
 }
 
+function bodyLinks_(message) {
+  const links = Array.isArray(message.bodyLinks) ? message.bodyLinks : [];
+  return links.join('\n');
+}
+
 function clean_(value) {
   if (value === null || value === undefined) {
     return '';
   }
   return String(value).replace(/\u0000/g, '').slice(0, 50000);
+}
+
+function cleanLarge_(value, limit) {
+  if (value === null || value === undefined) {
+    return '';
+  }
+  return String(value).replace(/\u0000/g, '').slice(0, limit);
 }
 
 function jsonResponse(payload, statusCode) {

@@ -81,7 +81,9 @@ def connect_account() -> Account:
 def fetch_messages(account: Account, lookback_minutes: int, top: int) -> List[Dict[str, Any]]:
     cutoff = EWSDateTime.now(tz=UTC) - timedelta(minutes=lookback_minutes)
     include_attachments = parse_bool(env("INCLUDE_ATTACHMENTS"), default=False)
+    include_body_html = parse_bool(env("INCLUDE_BODY_HTML"), default=True)
     max_attachment_bytes = int(env("MAX_ATTACHMENT_BYTES", "2500000"))
+    max_body_html_chars = int(env("MAX_BODY_HTML_CHARS", "200000"))
     items = (
         account.inbox.filter(datetime_received__gte=cutoff)
         .order_by("-datetime_received")[:top]
@@ -90,15 +92,26 @@ def fetch_messages(account: Account, lookback_minutes: int, top: int) -> List[Di
         serialize_item(
             item,
             include_attachments=include_attachments,
+            include_body_html=include_body_html,
             max_attachment_bytes=max_attachment_bytes,
+            max_body_html_chars=max_body_html_chars,
         )
         for item in items
     ]
 
 
-def serialize_item(item: Any, include_attachments: bool, max_attachment_bytes: int) -> Dict[str, Any]:
+def serialize_item(
+    item: Any,
+    include_attachments: bool,
+    include_body_html: bool,
+    max_attachment_bytes: int,
+    max_body_html_chars: int,
+) -> Dict[str, Any]:
     sender = getattr(item, "sender", None) or getattr(item, "author", None)
     body_preview = extract_body_preview(item)
+    body_html = extract_body_html(item, max_body_html_chars) if include_body_html else ""
+    body_text_full = extract_body_text(item, limit=50000)
+    body_links = extract_body_links(item)
     attachments = serialize_attachments(item, include_attachments, max_attachment_bytes)
     body_image_urls = extract_body_image_urls(item)
     attachment_count = count_attachments(item)
@@ -110,6 +123,9 @@ def serialize_item(item: Any, include_attachments: bool, max_attachment_bytes: i
         "fromEmail": str(getattr(sender, "email_address", "") or ""),
         "subject": str(getattr(item, "subject", "") or ""),
         "bodyPreview": body_preview,
+        "bodyTextFull": body_text_full,
+        "bodyHtml": body_html,
+        "bodyLinks": body_links,
         "hasAttachments": bool(getattr(item, "has_attachments", False) or attachments),
         "attachmentCount": attachment_count,
         "attachments": attachments,
@@ -120,6 +136,10 @@ def serialize_item(item: Any, include_attachments: bool, max_attachment_bytes: i
 
 
 def extract_body_preview(item: Any, limit: int = 1000) -> str:
+    return extract_body_text(item, limit=limit)
+
+
+def extract_body_text(item: Any, limit: int = 50000) -> str:
     text_body = getattr(item, "text_body", None)
     if text_body:
         return normalize_text(str(text_body))[:limit]
@@ -131,12 +151,40 @@ def extract_body_preview(item: Any, limit: int = 1000) -> str:
     return html_to_text(str(body))[:limit]
 
 
+def extract_body_html(item: Any, limit: int) -> str:
+    body = str(getattr(item, "body", "") or "")
+    if not body:
+        return ""
+    if "<" not in body and ">" not in body:
+        return ""
+    return body[:limit]
+
+
 def html_to_text(value: str) -> str:
     value = re.sub(r"(?is)<(script|style).*?>.*?</\1>", " ", value)
     value = re.sub(r"(?i)<br\s*/?>", "\n", value)
     value = re.sub(r"(?i)</p\s*>", "\n", value)
     value = re.sub(r"(?s)<[^>]+>", " ", value)
     return normalize_text(unescape(value))
+
+
+def extract_body_links(item: Any, limit: int = 100) -> List[str]:
+    body = str(getattr(item, "body", "") or "")
+    if not body:
+        return []
+
+    links: List[str] = []
+    for match in re.finditer(r"""(?is)<a\b[^>]*\bhref=["']([^"']+)["'][^>]*>(.*?)</a>""", body):
+        href = normalize_text(unescape(match.group(1)))
+        label = html_to_text(match.group(2))[:200]
+        if not href:
+            continue
+        value = f"{label} | {href}" if label else href
+        if value not in links:
+            links.append(value[:4000])
+        if len(links) >= limit:
+            return links
+    return links
 
 
 def extract_body_image_urls(item: Any, limit: int = 20) -> List[str]:
