@@ -51,7 +51,8 @@ function doPost(e) {
       const existingAttachmentLinks = rowNumber && columns.AttachmentLinks
         ? clean_(sheet.getRange(rowNumber, columns.AttachmentLinks).getValue())
         : '';
-      const attachmentLinks = existingAttachmentLinks || saveAttachments_(message, props);
+      const savedAttachmentLinks = validAttachmentLinks_(existingAttachmentLinks) ? existingAttachmentLinks : '';
+      const attachmentLinks = savedAttachmentLinks || saveAttachments_(message, props);
       const row = buildRow_(message, attachmentLinks, now);
 
       if (rowNumber) {
@@ -224,6 +225,14 @@ function saveAttachments_(message, props) {
   });
 
   return links.join('\n');
+}
+
+function validAttachmentLinks_(value) {
+  const text = clean_(value);
+  if (!text) {
+    return false;
+  }
+  return text.split(/\s+/).some((part) => /^https?:\/\//i.test(part));
 }
 
 function getOrCreateDriveFolder_(folderName) {
