@@ -148,10 +148,10 @@ def extract_body_text(item: Any, limit: int = 50000) -> str:
         not text_body
         or html_text.count("\n") > normalize_text_lines(str(text_body)).count("\n")
     ):
-        return html_text[:limit]
+        return normalize_email_text_lines(html_text)[:limit]
 
     if text_body:
-        return normalize_text_lines(str(text_body))[:limit]
+        return normalize_email_text_lines(str(text_body))[:limit]
 
     return ""
 
@@ -172,6 +172,44 @@ def html_to_text(value: str) -> str:
     value = re.sub(r"(?i)</?(?:td|th)\b[^>]*>", "\n", value)
     value = re.sub(r"(?s)<[^>]+>", " ", value)
     return normalize_text_lines(unescape(value))
+
+
+def normalize_email_text_lines(value: str) -> str:
+    text = normalize_text_lines(unescape(value).replace("\u00a0", " "))
+    if not looks_like_dtad_profile_mail(text):
+        return text
+
+    text = re.sub(
+        r"(?i)\b(Suchprofilergebnisse?)\s+(\d{1,3})\s+",
+        r"\1\n\2\n",
+        text,
+    )
+    text = re.sub(
+        r"(?i)\b(Zu allen\s+\d+\s+(?:Aufträgen|Auftraegen)\s+von\s+heute)\s+(\d{1,3})\s+",
+        r"\1\n\2\n",
+        text,
+    )
+
+    field_patterns = [
+        r"Treffer bei\s*:",
+        r"Kategorie\s+",
+        r"Region\s*:",
+        r"Frist\s*:",
+        r"Projektstand\s*:",
+        r"Vergabestelle\s*:",
+        r"Auftraggeber\s*:",
+        r"Weitere Informationen\s*:",
+    ]
+    for pattern in field_patterns:
+        text = re.sub(rf"(?i)\s+({pattern})", r"\n\1", text)
+
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return normalize_text_lines(text)
+
+
+def looks_like_dtad_profile_mail(value: str) -> bool:
+    lowered = value.lower()
+    return "suchprofilergebnis" in lowered or ("dtad" in lowered and "suchprofilergebnisse" in lowered)
 
 
 def extract_body_links(item: Any, limit: int = 100) -> List[str]:
