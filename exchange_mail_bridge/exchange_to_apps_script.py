@@ -251,17 +251,29 @@ def iso_or_empty(value: Any) -> str:
 
 
 def post_messages(messages: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
-    payload = {
-        "token": required_env("BRIDGE_TOKEN"),
-        "messages": list(messages),
-    }
-    response = requests.post(
-        required_env("APPS_SCRIPT_WEBAPP_URL"),
-        json=payload,
-        timeout=30,
-    )
-    response.raise_for_status()
-    return response.json()
+    message_list = list(messages)
+    batch_size = max(1, int(env("POST_BATCH_SIZE", "10")))
+    result: Dict[str, Any] = {"ok": True, "appended": 0, "updated": 0, "skipped": 0}
+
+    for index in range(0, len(message_list), batch_size):
+        payload = {
+            "token": required_env("BRIDGE_TOKEN"),
+            "messages": message_list[index:index + batch_size],
+        }
+        response = requests.post(
+            required_env("APPS_SCRIPT_WEBAPP_URL"),
+            json=payload,
+            timeout=int(env("APPS_SCRIPT_TIMEOUT", "60")),
+        )
+        response.raise_for_status()
+        batch_result = response.json()
+        if not batch_result.get("ok"):
+            raise SystemExit(f"Apps Script error: {batch_result}")
+
+        for key in ("appended", "updated", "skipped"):
+            result[key] += int(batch_result.get(key, 0) or 0)
+
+    return result
 
 
 def parse_args() -> argparse.Namespace:
