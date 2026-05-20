@@ -282,7 +282,14 @@ function getOrCreateDriveFolder_(folderName) {
 
 function attachmentNames_(attachments) {
   return attachments
-    .map((attachment) => attachment.name || attachment.contentId || attachment.contentType || 'attachment')
+    .map((attachment, index) => [
+      `attachment ${index + 1}`,
+      attachment.name ? `name=${attachment.name}` : '',
+      attachment.contentType ? `contentType=${attachment.contentType}` : '',
+      attachment.isInline ? 'inline=true' : '',
+      attachment.contentId ? `contentId=${attachment.contentId}` : '',
+      attachment.skippedReason ? `skipped=${attachment.skippedReason}` : ''
+    ].filter(Boolean).join(' | '))
     .join('\n');
 }
 

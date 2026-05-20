@@ -237,6 +237,20 @@ def extract_body_image_urls(item: Any, limit: int = 20) -> List[str]:
         return []
 
     urls: List[str] = []
+    for match in re.finditer(r"""(?is)<img\b[^>]*>""", body):
+        attrs = extract_html_attributes(match.group(0))
+        parts = []
+        for key in ("src", "alt", "title", "aria-label", "class", "id", "width", "height"):
+            value = attrs.get(key, "")
+            if value:
+                parts.append(f"{key}={value}")
+        if parts:
+            value = "IMG " + " | ".join(parts)
+            if value not in urls:
+                urls.append(value[:2000])
+        if len(urls) >= limit:
+            return urls
+
     patterns = [
         r"""(?is)<img\b[^>]*\bsrc=["']([^"']+)["']""",
         r"""(?is)\b(?:src|href|background)=["']([^"']+\.(?:png|jpe?g|gif|webp|bmp|svg)(?:\?[^"']*)?)["']""",
@@ -253,6 +267,16 @@ def extract_body_image_urls(item: Any, limit: int = 20) -> List[str]:
             if len(urls) >= limit:
                 return urls
     return urls
+
+
+def extract_html_attributes(tag: str) -> Dict[str, str]:
+    attrs: Dict[str, str] = {}
+    for match in re.finditer(r"""(?is)([a-z0-9_-]+)\s*=\s*(["'])(.*?)\2""", tag):
+        key = match.group(1).lower()
+        value = normalize_text(unescape(match.group(3)))
+        if value:
+            attrs[key] = value
+    return attrs
 
 
 def count_attachments(item: Any) -> int:
