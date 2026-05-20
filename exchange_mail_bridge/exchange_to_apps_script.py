@@ -167,11 +167,26 @@ def extract_body_html(item: Any, limit: int) -> str:
 
 def html_to_text(value: str) -> str:
     value = re.sub(r"(?is)<(script|style).*?>.*?</\1>", " ", value)
+    value = re.sub(r"(?is)<img\b[^>]*>", image_tag_to_text, value)
     value = re.sub(r"(?i)<br\s*/?>", "\n", value)
     value = re.sub(r"(?i)</?(?:p|div|tr|table|tbody|thead|tfoot|ul|ol|li|h[1-6])\b[^>]*>", "\n", value)
     value = re.sub(r"(?i)</?(?:td|th)\b[^>]*>", "\n", value)
     value = re.sub(r"(?s)<[^>]+>", " ", value)
     return normalize_text_lines(unescape(value))
+
+
+def image_tag_to_text(match: re.Match) -> str:
+    attrs = extract_html_attributes(match.group(0))
+    text = " ".join(
+        value
+        for value in (
+            attrs.get("alt", ""),
+            attrs.get("title", ""),
+            attrs.get("aria-label", ""),
+        )
+        if value
+    )
+    return f"\n{text}\n" if text else " "
 
 
 def normalize_email_text_lines(value: str) -> str:
