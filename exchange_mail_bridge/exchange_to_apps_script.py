@@ -418,6 +418,11 @@ def post_messages(messages: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Poll Exchange EWS and push mail rows to Apps Script.")
     parser.add_argument("--dry-run", action="store_true", help="Print messages instead of posting to Apps Script.")
+    parser.add_argument(
+        "--dry-run-summary",
+        action="store_true",
+        help="Print a safe summary instead of posting to Apps Script. Does not include mail bodies or attachments.",
+    )
     return parser.parse_args()
 
 
@@ -428,6 +433,10 @@ def main() -> None:
 
     account = connect_account()
     messages = fetch_messages(account, lookback_minutes=lookback_minutes, top=top)
+
+    if args.dry_run_summary:
+        print(json.dumps(build_dry_run_summary(messages), ensure_ascii=False, indent=2))
+        return
 
     if args.dry_run:
         print(json.dumps({"messages": redact_attachment_payloads(messages)}, ensure_ascii=False, indent=2))
@@ -444,6 +453,30 @@ def redact_attachment_payloads(messages: List[Dict[str, Any]]) -> List[Dict[str,
             if "base64" in attachment:
                 attachment["base64"] = f"<{len(attachment['base64'])} base64 chars>"
     return redacted
+
+
+def build_dry_run_summary(messages: List[Dict[str, Any]]) -> Dict[str, Any]:
+    return {
+        "ok": True,
+        "mode": "dry-run-summary",
+        "messageCount": len(messages),
+        "messages": [
+            {
+                "receivedTime": message.get("receivedTime", ""),
+                "fromName": message.get("fromName", ""),
+                "fromEmail": message.get("fromEmail", ""),
+                "subject": message.get("subject", ""),
+                "hasAttachments": bool(message.get("hasAttachments", False)),
+                "attachmentCount": int(message.get("attachmentCount", 0) or 0),
+                "bodyTextLength": len(str(message.get("bodyTextFull", "") or "")),
+                "bodyHtmlLength": len(str(message.get("bodyHtml", "") or "")),
+                "bodyLinkCount": len(message.get("bodyLinks", []) or []),
+                "bodyImageUrlCount": len(message.get("bodyImageUrls", []) or []),
+            }
+            for message in messages
+        ],
+        "note": "NO SEND - no Apps Script post, no Sheet write, no email send.",
+    }
 
 
 if __name__ == "__main__":
