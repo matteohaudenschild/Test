@@ -39,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      EWS_URL: ${{ secrets.AUFSCHALTUNG_EWS_URL }}
+      EWS_URL: ${{ secrets.EWS_URL }}
       EWS_EMAIL: ${{ secrets.AUFSCHALTUNG_EWS_EMAIL }}
       EWS_USERNAME: ${{ secrets.AUFSCHALTUNG_EWS_USERNAME }}
       EWS_PASSWORD: ${{ secrets.AUFSCHALTUNG_EWS_PASSWORD }}
