@@ -35,7 +35,7 @@ on:
     - cron: "*/10 * * * *"
 
 jobs:
-  sync-aufschaltung-mail:
+  sync-mail:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -56,41 +56,18 @@ jobs:
       DRY_RUN_SUMMARY: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run_summary || 'false' }}
 
     steps:
-      - name: Check required Aufschaltung secrets
-        id: config
-        shell: bash
-        run: |
-          missing=0
-          for name in EWS_URL EWS_EMAIL EWS_USERNAME EWS_PASSWORD EWS_AUTH_TYPE EWS_VERIFY_TLS APPS_SCRIPT_WEBAPP_URL BRIDGE_TOKEN; do
-            if [ -z "${!name}" ]; then
-              echo "Missing secret-backed env: $name"
-              missing=1
-            fi
-          done
-
-          if [ "$missing" -eq 0 ]; then
-            echo "configured=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "Aufschaltung bridge is not configured yet. Skipping without failure."
-          fi
-
       - name: Check out repository
-        if: steps.config.outputs.configured == 'true'
         uses: actions/checkout@v4
 
       - name: Set up Python
-        if: steps.config.outputs.configured == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Install dependencies
-        if: steps.config.outputs.configured == 'true'
         run: python -m pip install -r exchange_mail_bridge/requirements.txt
 
-      - name: Sync Aufschaltung Exchange inbox to Google Sheet
-        if: steps.config.outputs.configured == 'true'
+      - name: Sync Exchange inbox to Google Sheet
         run: |
           if [ "$DRY_RUN_SUMMARY" = "true" ]; then
             python exchange_mail_bridge/exchange_to_apps_script.py --dry-run-summary
