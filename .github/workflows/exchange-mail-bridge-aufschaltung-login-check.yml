@@ -24,8 +24,8 @@ jobs:
       # Exact Ausschreibung setup, except the login credentials below.
       EWS_URL: ${{ secrets.EWS_URL }}
       EWS_EMAIL: ${{ secrets.EWS_EMAIL }}
-      EWS_USERNAME: ${{ secrets.AUFSCHALTUNG_EWS_USERNAME }}
-      EWS_PASSWORD: ${{ secrets.AUFSCHALTUNG_EWS_PASSWORD }}
+      EWS_USERNAME: ${{ secrets.EWS_USERNAME }}
+      EWS_PASSWORD: ${{ secrets.EWS_PASSWORD }}
       EWS_AUTH_TYPE: ${{ secrets.EWS_AUTH_TYPE }}
       EWS_VERIFY_TLS: ${{ secrets.EWS_VERIFY_TLS }}
       APPS_SCRIPT_WEBAPP_URL: ${{ secrets.APPS_SCRIPT_WEBAPP_URL }}
